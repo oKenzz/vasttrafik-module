@@ -82,10 +82,6 @@ async function makeRequest(endpoint: string, token: string): Promise<ResponseBod
       headers: { "Authorization": `Bearer ${token}` }
     });
 
-    if (!response.ok) {
-      throw new Error(`Request error! Status: ${response.status}`);
-    }
-
     const data: ResponseBody = await response.json();
     return data;
   } catch (error) {
@@ -93,18 +89,72 @@ async function makeRequest(endpoint: string, token: string): Promise<ResponseBod
   }
 }
 
-async function getStopArea(stopArea: string, token: string): Promise<ResponseBody> {
+async function getGid(stopArea: string, token: string): Promise<string> {
   const endpoint: string = `/locations/by-text?q=${stopArea}&limit=1&offset=0&types=stoparea`;
+  const data: ResponseBody = await makeRequest(endpoint, token);
+  const gid: string = data.results[0].gid;
+  return gid;
+}
+
+
+async function getJourneys(originName: string, destinationName: string, token: string): Promise<ResponseBody> {
+  const endpoint: string = `/journeys?originGid=${encodeURIComponent(originName)}&destinationGid=${encodeURIComponent(destinationName)}&limit=3`;
   const data: ResponseBody = await makeRequest(endpoint, token);
   return data;
 }
+
+async function getDepartures(gid: string, platforms: string, token: string): Promise<ResponseBody> {
+  const endpoint: string = `/stop-areas/${gid}/departures?platforms=${platforms}&limit=5`;
+  const data: ResponseBody = await makeRequest(endpoint, token);
+  return data;
+}
+
+function extractTime(timeString: string): string {
+  const time: string = timeString.split("T")[1].split(".")[0];
+  return time;
+}
+
+function calculateTimeInSec(time: string): number {
+  const timestamps: string[] = time.split(":");
+  const hours: number = parseInt(timestamps[0]) * 60 * 60;
+  const minutes: number = parseInt(timestamps[1]) * 60;
+  const seconds: number = parseInt(timestamps[2]);
+  return hours + minutes + seconds;
+}
+
+function formatTime(time: number): string {
+  const hours: number = Math.floor(time / (60 * 60));
+  const minutes: number = Math.floor(time % (60 * 60) / 60);
+  const seconds: number = Math.floor(time % 60 % 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getTimeDifference(estimatedTime: string): string {
+  const currentTime: string = new Date().toLocaleTimeString("en-GB")
+  const arrivalTime: string = extractTime(estimatedTime);
+  const timeDifference: number = calculateTimeInSec(arrivalTime) - calculateTimeInSec(currentTime);
+  return formatTime(timeDifference);
+}
+
+async function getTramArrivals(stopArea: string, token: string): Promise<void> {
+  const gid: string = await getGid(stopArea, token);
+  const departures: ResponseBody = await getDepartures(gid, "A", token)
+  for (let i: number = 0; i < departures.results.length; i++) {
+    const estimatedTime: string = departures.results[i].estimatedOtherwisePlannedTime;
+    const line: string = departures.results[i].serviceJourney.line.shortName;
+    const direction: string = departures.results[i].serviceJourney.direction;
+    const timeBeforeArrival: string = getTimeDifference(estimatedTime);
+    console.log("Tram:", line + " " + direction);
+    console.log("Arrives in:", timeBeforeArrival + "\n");
+  }
+}
+
 
 const client: ClientCredentials = new ClientCredentials(config);
 const loadedToken: AccessToken | null = loadTokenFromFile();
 const accessToken: AccessToken = await validateToken(loadedToken);
 if (accessToken && accessToken.token && accessToken.token.access_token) {
   const token: string = accessToken.token.access_token as string;
-  const stopArea: string = "friskväderstorget";
-  const data: ResponseBody = await getStopArea(stopArea, token);
-  console.log(data);
+  const stopArea: string = "brunnsparken";
+  getTramArrivals(stopArea, token);
 }
