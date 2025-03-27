@@ -1,9 +1,10 @@
 import dotenv from 'dotenv';
 import fs from 'fs';
-import type { ClientCredentialTokenConfig, AccessToken, ModuleOptions } from 'simple-oauth2';
+import type { ClientCredentialTokenConfig, AccessToken, ModuleOptions, Token } from 'simple-oauth2';
 import { ClientCredentials } from 'simple-oauth2';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import type { Args } from './types.ts';
 
 dotenv.config();
 
@@ -28,13 +29,10 @@ const tokenConfig: ClientCredentialTokenConfig = {
   scope: ""
 };
 
-// TODO: Implement proper type for parsed data
-type TokenData = any;
-
 function loadTokenFromFile(): AccessToken | null {
   try {
     const data: string = fs.readFileSync(TOKEN_FILE, 'utf8');
-    const parsedData: TokenData = JSON.parse(data);
+    const parsedData: Token = JSON.parse(data);
     if (parsedData && parsedData.access_token) {
       return client.createToken(parsedData);
     }
@@ -159,10 +157,6 @@ async function getTramArrivals(stopArea: string, token: string, platform?: strin
 
 
 
-interface Args {
-  stop: string;
-  platform?: string;
-}
 
 const argv: Args = yargs(hideBin(process.argv))
   .option("stop", {
