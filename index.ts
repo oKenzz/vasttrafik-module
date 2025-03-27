@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import type { ClientCredentialTokenConfig, AccessToken, ModuleOptions } from 'simple-oauth2';
 import { ClientCredentials } from 'simple-oauth2';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
 dotenv.config();
 
@@ -103,8 +105,11 @@ async function getJourneys(originName: string, destinationName: string, token: s
   return data;
 }
 
-async function getDepartures(gid: string, platforms: string, token: string): Promise<ResponseBody> {
-  const endpoint: string = `/stop-areas/${gid}/departures?platforms=${platforms}&limit=5`;
+async function getDepartures(gid: string, token: string, platforms?: string): Promise<ResponseBody> {
+  let endpoint: string = `/stop-areas/${gid}/departures?&limit=5`;
+  if (platforms) {
+    endpoint += `&platforms=${platforms}`;
+  }
   const data: ResponseBody = await makeRequest(endpoint, token);
   return data;
 }
@@ -133,12 +138,15 @@ function getTimeDifference(estimatedTime: string): string {
   const currentTime: string = new Date().toLocaleTimeString("en-GB")
   const arrivalTime: string = extractTime(estimatedTime);
   const timeDifference: number = calculateTimeInSec(arrivalTime) - calculateTimeInSec(currentTime);
-  return formatTime(timeDifference);
+  if (timeDifference > 0) {
+    return formatTime(timeDifference);
+  }
+  return "NOW";
 }
 
-async function getTramArrivals(stopArea: string, token: string): Promise<void> {
+async function getTramArrivals(stopArea: string, token: string, platform?: string): Promise<void> {
   const gid: string = await getGid(stopArea, token);
-  const departures: ResponseBody = await getDepartures(gid, "A", token)
+  const departures: ResponseBody = await getDepartures(gid, token, platform)
   for (let i: number = 0; i < departures.results.length; i++) {
     const estimatedTime: string = departures.results[i].estimatedOtherwisePlannedTime;
     const line: string = departures.results[i].serviceJourney.line.shortName;
@@ -150,11 +158,28 @@ async function getTramArrivals(stopArea: string, token: string): Promise<void> {
 }
 
 
+
+interface Args {
+  stop: string;
+  platform?: string;
+}
+
+const argv: Args = yargs(hideBin(process.argv))
+  .option("stop", {
+    alias: 's',
+    type: 'string',
+    demandOption: true,
+  })
+  .option("platform", {
+    alias: 'p',
+    type: 'string',
+  })
+  .parseSync();
+
 const client: ClientCredentials = new ClientCredentials(config);
 const loadedToken: AccessToken | null = loadTokenFromFile();
 const accessToken: AccessToken = await validateToken(loadedToken);
 if (accessToken && accessToken.token && accessToken.token.access_token) {
   const token: string = accessToken.token.access_token as string;
-  const stopArea: string = "brunnsparken";
-  getTramArrivals(stopArea, token);
+  getTramArrivals(argv.stop, token, argv.platform);
 }
